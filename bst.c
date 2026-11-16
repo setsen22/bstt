@@ -1,13 +1,152 @@
 #include "DS.h"
 #include <stdio.h>
 #include <stdlib.h>
+static int size(const Elm *x)
 {
-        return t == NULL ? 0 : t->height;
+        if (x == NULL)
+                return 0;
+        return x->len;
 }
 
-static int cnt(const Elm *t)
+/* NULL дэд модны өндөр 0 */
+static int hgt(const Elm *x)
 {
-        return t == NULL ? 0 : t->len;
+        if (x == NULL)
+                return 0;
+        return x->height;
+}
+
+/* Рекурсоос буцахдаа len, height-ийг шинэчилнэ (лекц: update counts after recursive calls) */
+static void update(Elm *x)
+{
+        int hl = hgt(x->L);
+        int hr = hgt(x->R);
+        x->len = 1 + size(x->L) + size(x->R);
+        x->height = 1 + (hl > hr ? hl : hr);
+}
+
+/* Лекцийн put(Node x, key): хоосон газар хүрвэл шинэ орой үүсгэнэ */
+static Elm *put(Elm *x, int key)
+{
+        if (x == NULL) {
+                Elm *e = malloc(sizeof(Elm));
+                e->x = key;
+                e->height = 1;
+                e->len = 1;
+                e->L = NULL;
+                e->R = NULL;
+                return e;
+        }
+        if (key < x->x)
+                x->L = put(x->L, key);
+        else if (key > x->x)
+                x->R = put(x->R, key);
+        update(x);
+        return x;
+}
+
+/* Лекцийн min(): зүүн тийш null хүртэл явна */
+static Elm *min(Elm *x)
+{
+        while (x->L != NULL)
+                x = x->L;
+        return x;
+}
+
+/* Лекцийн deleteMin(): зүүн холбоос null болтол явж, тэр оройг баруун хүүгээр нь орлуулна.
+   Устгах оройг free хийнэ. */
+static Elm *deleteMin(Elm *x)
+{
+        if (x->L == NULL) {
+                Elm *r = x->R;
+                free(x);
+                return r;
+        }
+        x->L = deleteMin(x->L);
+        update(x);
+        return x;
+}
+
+/* Лекцийн Hibbard deletion */
+static Elm *delete(Elm *x, int key)
+{
+        if (x == NULL)
+                return NULL;
+        if (key < x->x)
+                x->L = delete(x->L, key);
+        else if (key > x->x)
+                x->R = delete(x->R, key);
+        else {
+                if (x->R == NULL) {             /* баруун хүүгүй */
+                        Elm *l = x->L;
+                        free(x);
+                        return l;
+                }
+                if (x->L == NULL) {             /* зүүн хүүгүй */
+                        Elm *r = x->R;
+                        free(x);
+                        return r;
+                }
+                /* 2 хүүтэй: successor-ийн утгыг авч, баруун дэд модноос successor-ийг устгана */
+                int s = min(x->R)->x;
+                x->R = deleteMin(x->R);
+                x->x = s;
+        }
+        update(x);
+        return x;
+}
+
+static void inorder(const Elm *x)
+{
+        if (x == NULL)
+                return;
+        inorder(x->L);
+        printf("%d %d %d\n", x->x, x->len, x->height);
+        inorder(x->R);
+}
+
+/* Лекцийн rank(). Лекцэд "key-ээс эрс бага" байсан бол энд "бага буюу тэнцүү"
+   тул тэнцүү үед өөрийг нь мөн нэмнэ. */
+static int rank(const Elm *x, int key)
+{
+        if (x == NULL)
+                return 0;
+        if (key < x->x)
+                return rank(x->L, key);
+        else if (key > x->x)
+                return 1 + size(x->L) + rank(x->R, key);
+        else
+                return size(x->L) + 1;
+}
+
+/* Лекцийн floor() */
+static Elm *floor_(Elm *x, int key)
+{
+        if (x == NULL)
+                return NULL;
+        if (key == x->x)
+                return x;
+        if (key < x->x)
+                return floor_(x->L, key);
+        Elm *t = floor_(x->R, key);
+        if (t != NULL)
+                return t;
+        return x;
+}
+
+/* ceiling() нь floor()-ын толин тусгал */
+static Elm *ceiling_(Elm *x, int key)
+{
+        if (x == NULL)
+                return NULL;
+        if (key == x->x)
+                return x;
+        if (key > x->x)
+                return ceiling_(x->R, key);
+        Elm *t = ceiling_(x->L, key);
+        if (t != NULL)
+                return t;
+        return x;
 }
 /*
   `ptree`-ийн зааж байгаа модонд `x` утгыг оруулна.
@@ -15,99 +154,10 @@ static int cnt(const Elm *t)
   байрлалаас дээшхи өвөг эцгийн `len`, `height` утгууд өөрчлөгдөнө.
   Мод хоосон байсан бол `ptree->root` хаяг өөрчлөгдөж шинээр орсон оройг заана.
  */
-static void update(Elm *t)
-{
-        int hl = hgt(t->L);
-        int hr = hgt(t->R);
-        t->height = 1 + (hl > hr ? hl : hr);
-        t->len = 1 + cnt(t->L) + cnt(t->R);
-}
-
-static Elm *new_elm(int x)
-{
-        Elm *e = malloc(sizeof(Elm));
-        if (e == NULL)
-                return NULL;
-        e->x = x;
-        e->height = 1;
-        e->len = 1;
-        e->L = e->R = NULL;
-        return e;
-}
-
-static Elm *put(Elm *t, int x)
-{
-        if (t == NULL)
-                return new_elm(x);
-        if (x < t->x)
-                t->L = put(t->L, x);
-        else if (x > t->x)
-                t->R = put(t->R, x);
-        update(t);
-        return t;
-}
-
-/* t модны хамгийн бага оройг устгаад шинэ үндсийг буцаана.
-   *minx-д устгасан утгыг хадгална */
-static Elm *del_min(Elm *t, int *minx)
-{
-        if (t->L == NULL) {
-                Elm *r = t->R;
-                *minx = t->x;
-                free(t);
-                return r;
-        }
-        t->L = del_min(t->L, minx);
-        update(t);
-        return t;
-}
-
-static Elm *del(Elm *t, int x)
-{
-        if (t == NULL)
-                return NULL;
-        if (x < t->x)
-                t->L = del(t->L, x);
-        else if (x > t->x)
-                t->R = del(t->R, x);
-        else {
-                if (t->L == NULL) {
-                        Elm *r = t->R;
-                        free(t);
-                        return r;
-                }
-                if (t->R == NULL) {
-                        Elm *l = t->L;
-                        free(t);
-                        return l;
-                }
-                /* Хоёр хүүтэй: баруун дэд модны хамгийн багаар орлуулна */
-                int m;
-                t->R = del_min(t->R, &m);
-                t->x = m;
-        }
-        update(t);
-        return t;
-}
-
-static void inorder(const Elm *t)
-{
-        if (t == NULL)
-                return;
-        inorder(t->L);
-        printf("%d %d %d\n", t->x, t->len, t->height);
-        inorder(t->R);
-}
 void bs_put(BST *ptree, int x)
 {
-ptree->root = put(ptree->root, x);        // Функцийг хэрэгжүүлнэ үү
+        ptree->root = put(ptree->root, x);
 }
-
-/*
-  `ptree`-ийн зааж байгаа модноос `x` утгыг хайн олдсон оройн `Elm*` хаягийг буцаана.
-  Олдохгүй бол `NULL` хаягийг буцаана.
-  Мод дандаа ялгаатай элементүүд хадгална гэж үзэж болно.
- */
 Elm *bs_get(const BST *ptree, int x)
 {
         Elm *t = ptree->root;
@@ -121,14 +171,9 @@ Elm *bs_get(const BST *ptree, int x)
         }
         return NULL;
 }
-
-/*
-  Устгах функц: ХХМноос `x` утгыг хайж олоод устгана.
-  Олдохгүй бол юу ч хийхгүй.
- */
 void bs_del(BST *ptree, int x)
 {
-ptree->root = del(ptree->root, x);        // Функцийг хэрэгжүүлнэ үү
+ptree->root = delete(ptree->root, x);       // Функцийг хэрэгжүүлнэ үү
 }
 
 /*
@@ -137,10 +182,8 @@ ptree->root = del(ptree->root, x);        // Функцийг хэрэгжүүл
  */
 int bs_delMin(BST *ptree)
 {
- int m = 0;
-        if (ptree->root == NULL)
-                return m;
-        ptree->root = del_min(ptree->root, &m);
+ int m = min(ptree->root)->x;
+        ptree->root = deleteMin(ptree->root);
         return m;        // Функцийг хэрэгжүүлнэ үү
 }
 
@@ -149,7 +192,7 @@ int bs_delMin(BST *ptree)
  */
 void bs_inorder(const BST *ptree)
 {
-inorder(ptree->root);        // Функцийг хэрэгжүүлнэ үү
+inorder(ptree->root);       // Функцийг хэрэгжүүлнэ үү
 }
 
 /*
@@ -160,20 +203,7 @@ inorder(ptree->root);        // Функцийг хэрэгжүүлнэ үү
  */
 int bs_rank(const BST *ptree, int x)
 {
-Elm *t = ptree->root;
-        int r = 0;
-        while (t != NULL) {
-                if (x < t->x)
-                        t = t->L;
-                else if (x > t->x) {
-                        r += 1 + cnt(t->L);
-                        t = t->R;
-                } else {
-                        r += 1 + cnt(t->L);
-                        break;
-                }
-        }
-        return r;        // Функцийг хэрэгжүүлнэ үү
+return rank(ptree->root, x);       // Функцийг хэрэгжүүлнэ үү
 }
 
 /*
@@ -195,18 +225,7 @@ Elm *t = bs_get(ptree, x);
  */
 Elm *bs_floor(const BST *ptree, int x)
 {
- Elm *t = ptree->root;
-        Elm *best = NULL;
-        while (t != NULL) {
-                if (t->x == x)
-                        return t;
-                if (t->x < x) {
-                        best = t;
-                        t = t->R;
-                } else
-                        t = t->L;
-        }
-        return best;        // Функцийг хэрэгжүүлнэ үү
+return floor_(ptree->root, x);      // Функцийг хэрэгжүүлнэ үү
 }
 
 /*
@@ -215,18 +234,7 @@ Elm *bs_floor(const BST *ptree, int x)
  */
 Elm *bs_ceiling(const BST *ptree, int x)
 {
-Elm *t = ptree->root;
-        Elm *best = NULL;
-        while (t != NULL) {
-                if (t->x == x)
-                        return t;
-                if (t->x > x) {
-                        best = t;
-                        t = t->L;
-                } else
-                        t = t->R;
-        }
-        return best;        // Функцийг хэрэгжүүлнэ үү
+return ceiling_(ptree->root, x);        // Функцийг хэрэгжүүлнэ үү
 }
 
 /*
@@ -235,7 +243,7 @@ Elm *t = ptree->root;
  */
 int bs_height(const BST *ptree, int x)
 {
- Elm *t = bs_get(ptree, x);
+Elm *t = bs_get(ptree, x);
         if (t == NULL)
                 return -1;
         return t->height;        // Функцийг хэрэгжүүлнэ үү
